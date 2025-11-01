@@ -30,7 +30,6 @@ public class AudioAnalyzer {
 
             stream = AudioSystem.getAudioInputStream(decodedFormat, originalStream);
 
-            // Inicializar Clip para reproducción
             clip = AudioSystem.getClip();
             clip.open(stream);
 
@@ -40,7 +39,6 @@ public class AudioAnalyzer {
     }
 
     public void start() {
-        // Inicia análisis de energía en un hilo aparte
         new Thread(this::analyzeLoop, "AudioAnalyzer-Thread").start();
     }
 
@@ -71,9 +69,6 @@ public class AudioAnalyzer {
         return currentEnergy;
     }
 
-    // ------------------------
-    // Métodos para reproducir audio
-    // ------------------------
     public void play() {
         if (clip != null) {
             clip.start();

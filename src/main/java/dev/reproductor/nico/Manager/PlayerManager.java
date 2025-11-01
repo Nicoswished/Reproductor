@@ -55,7 +55,6 @@ public class PlayerManager {
 
     public void reproducirCancion(File song) {
         try {
-            // Detener cualquier canción y visual anterior
             detenerCancion();
 
             AudioInputStream ais = AudioSystem.getAudioInputStream(song);
@@ -78,18 +77,15 @@ public class PlayerManager {
 
             main.getNombreCan().setText(song.getName());
 
-            // Analyzer y OpenGL visual
             analyzer = new AudioAnalyzer(song);
             analyzer.start();
 
             if (visualizerThread != null) {
                 visualizerThread.stop();
             }
-            // Aquí usamos fullscreen según el toggle de Main
             visualizerThread = new OpenGLVisualizer(analyzer, main, main.fullscreenShader);
             visualizerThread.start();
 
-            // Cuando termina la canción
             clip.addLineListener(e -> {
                 if (e.getType() == LineEvent.Type.STOP && reproduciendo) {
                     if (loop) reproducirCancion(song);
@@ -175,7 +171,6 @@ public class PlayerManager {
         return main.getCurrentSongFile();
     }
 
-    // Este método permite reiniciar el visualizador (por ejemplo si cambias fullscreen)
     public void restartVisualizer() {
         if (visualizerThread != null) {
             visualizerThread.stop();

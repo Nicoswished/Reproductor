@@ -61,7 +61,6 @@ public class Main extends JFrame {
         panel.setBorder(new EmptyBorder(10, 10, 10, 10));
         setContentPane(panel);
 
-        // ---- Menú ----
         JMenuBar menuBar = new JMenuBar();
         JMenu menuOpciones = new JMenu("Opciones");
 
@@ -82,7 +81,6 @@ public class Main extends JFrame {
         menuBar.add(menuOpciones);
         setJMenuBar(menuBar);
 
-        // ---- Lista ----
         modeloLista = new DefaultListModel<>();
         lista_can = new JList<>(modeloLista);
         lista_can.setSelectionBackground(Color.decode("#3a85ff"));
@@ -90,7 +88,6 @@ public class Main extends JFrame {
         scrollLista.setPreferredSize(new Dimension(200, 0));
         panel.add(scrollLista, BorderLayout.WEST);
 
-        // ---- Botones lista ----
         botonesLista = new JPanel(new GridLayout(5,1,5,5));
         agregar = UIComponents.boton("Agregar");
         eliminar = UIComponents.boton("Quitar");
@@ -105,7 +102,6 @@ public class Main extends JFrame {
         botonesLista.add(cargarPlaylist);
         panel.add(botonesLista, BorderLayout.SOUTH);
 
-        // ---- Centro ----
         centro = new JPanel(new BorderLayout(10,10));
 
         JPanel infoPanel = new JPanel(new BorderLayout(5,5));
@@ -119,7 +115,6 @@ public class Main extends JFrame {
         infoPanel.add(tipo_reproduccion, BorderLayout.EAST);
         centro.add(infoPanel, BorderLayout.NORTH);
 
-        // ---- Slider tiempo ----
         tiempoPanel = new JPanel(new BorderLayout(5,5));
         tiempoSlider = UIComponents.slider(0,1000,0);
         tiempoLabel = new JLabel("00:00 / 00:00", SwingConstants.CENTER);
@@ -132,7 +127,6 @@ public class Main extends JFrame {
 
         centro.add(tiempoPanel, BorderLayout.CENTER);
 
-        // ---- Controles ----
         controles = new JPanel();
         anterior = UIComponents.botonIcon("/iconos/anterior.png");
         play = UIComponents.botonIcon("/iconos/play.png");
@@ -144,7 +138,6 @@ public class Main extends JFrame {
         controles.add(siguiente);
         centro.add(controles, BorderLayout.SOUTH);
 
-        // ---- Volumen ----
         volPanel = new JPanel(new BorderLayout());
         JLabel volLabel = new JLabel("Volumen", SwingConstants.CENTER);
         volumen = UIComponents.slider(0,100,100);
@@ -156,7 +149,6 @@ public class Main extends JFrame {
 
         shaderVisualizer = null;
 
-        // ---- Listeners ----
         agregar.addActionListener(e -> playlistManager.agregarCancion(modeloLista));
         eliminar.addActionListener(e -> playlistManager.eliminarCancion(lista_can, modeloLista, player));
         guardarPlaylist.addActionListener(e -> playlistManager.guardarPlaylist());
@@ -201,7 +193,6 @@ public class Main extends JFrame {
         aplicarTema();
     }
 
-    // ---- Métodos auxiliares ----
     public void resetRandomListIfNeeded() {
         if(playlistManager != null) playlistManager.resetRandomList();
     }
@@ -217,7 +208,6 @@ public class Main extends JFrame {
     public PlayListManager getPlaylistManager() { return playlistManager; }
     public JSlider getBarraVisual() { return barraVisual; }
 
-    // ---- Shaders ----
     private void toggleShaders() {
         shadersActivos = !shadersActivos;
         shadersItem.setText(shadersActivos ? "Desactivar Shaders" : "Activar Shaders");

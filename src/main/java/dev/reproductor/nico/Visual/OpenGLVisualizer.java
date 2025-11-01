@@ -80,7 +80,6 @@ public class OpenGLVisualizer implements Runnable {
                 float energy = analyzer.getCurrentEnergy();
                 float intensity = Math.min(energy / 20000f, 1f);
 
-                // efectos sencillos: vibración de color
                 GL11.glColor3f(random.nextFloat() * intensity, random.nextFloat() * intensity, random.nextFloat() * intensity);
                 GL11.glBegin(GL11.GL_QUADS);
                 GL11.glVertex2f(-1, -1);
