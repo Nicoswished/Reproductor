@@ -3,12 +3,14 @@ package dev.reproductor.nico.Manager;
 
 import dev.reproductor.nico.Audio.AudioAnalyzer;
 import dev.reproductor.nico.Main;
+import dev.reproductor.nico.Visual.OpenGLVisualizer;
 
 import javax.sound.sampled.*;
 import javax.swing.*;
 import java.io.File;
 
 public class PlayerManager {
+
     private Clip clip;
     private FloatControl controlVolumen;
     private long duracionActual = 0;
@@ -17,12 +19,12 @@ public class PlayerManager {
     private boolean loop = false;
     private String modo = "Normal";
 
-    private AudioAnalyzer analyzer;
-    private Thread visualThread;
+    public AudioAnalyzer analyzer;
+    private OpenGLVisualizer visualizerThread;
 
     private final Main main;
 
-    public PlayerManager(dev.reproductor.nico.Main main) {
+    public PlayerManager(Main main) {
         this.main = main;
     }
 
@@ -35,7 +37,7 @@ public class PlayerManager {
     }
 
     public void reproducirIndice(int i) {
-        PlayListManager pm = main.getPlaylistManager();
+        var pm = main.getPlaylistManager();
         if (pm.getCanciones().isEmpty()) return;
         pm.setIndiceActual(i);
         reproducirCancion(pm.getCanciones().get(i));
@@ -53,6 +55,7 @@ public class PlayerManager {
 
     public void reproducirCancion(File song) {
         try {
+            // Detener cualquier canción y visual anterior
             detenerCancion();
 
             AudioInputStream ais = AudioSystem.getAudioInputStream(song);
@@ -75,11 +78,18 @@ public class PlayerManager {
 
             main.getNombreCan().setText(song.getName());
 
+            // Analyzer y OpenGL visual
             analyzer = new AudioAnalyzer(song);
             analyzer.start();
 
-            iniciarVisualizacion();
+            if (visualizerThread != null) {
+                visualizerThread.stop();
+            }
+            // Aquí usamos fullscreen según el toggle de Main
+            visualizerThread = new OpenGLVisualizer(analyzer, main, main.fullscreenShader);
+            visualizerThread.start();
 
+            // Cuando termina la canción
             clip.addLineListener(e -> {
                 if (e.getType() == LineEvent.Type.STOP && reproduciendo) {
                     if (loop) reproducirCancion(song);
@@ -88,7 +98,7 @@ public class PlayerManager {
             });
 
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(main, "Error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(main, "Error al reproducir canción: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             e.printStackTrace();
         }
     }
@@ -114,12 +124,9 @@ public class PlayerManager {
                 clip.stop();
                 clip.close();
             }
-            if (analyzer != null && analyzer.getClip() != null) {
-                analyzer.getClip().stop();
-                analyzer.getClip().close();
-            }
-            if (visualThread != null && visualThread.isAlive()) {
-                visualThread.interrupt();
+            if (visualizerThread != null) {
+                visualizerThread.stop();
+                visualizerThread = null;
             }
         } catch (Exception ignored) {}
     }
@@ -160,27 +167,20 @@ public class PlayerManager {
         } catch (Exception ignored) {}
     }
 
-    private void iniciarVisualizacion() {
-        visualThread = new Thread(() -> {
-            try {
-                while (reproduciendo && analyzer != null) {
-                    float energia = analyzer.getCurrentEnergy();
-                    SwingUtilities.invokeLater(() -> {
-                        main.getBarraVisual().setValue((int) Math.min(energia / 50f, 100));
-                    });
-                    Thread.sleep(40);
-                }
-            } catch (Exception ignored) {}
-        });
-        visualThread.start();
-    }
-
-
     public void resetRandomListIfNeeded() {
         main.resetRandomListIfNeeded();
     }
 
     public File getCurrentSongFile() {
         return main.getCurrentSongFile();
+    }
+
+    // Este método permite reiniciar el visualizador (por ejemplo si cambias fullscreen)
+    public void restartVisualizer() {
+        if (visualizerThread != null) {
+            visualizerThread.stop();
+            visualizerThread = new OpenGLVisualizer(analyzer, main, main.fullscreenShader);
+            visualizerThread.start();
+        }
     }
 }
