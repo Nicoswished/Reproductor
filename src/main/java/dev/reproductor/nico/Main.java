@@ -1,430 +1,353 @@
-package dev.game.nico;
+package dev.reproductor.nico;
 
-import javafx.application.Application;
-import javafx.application.Platform;
-import javafx.geometry.Pos;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.input.KeyCode;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
-import javafx.scene.media.Media;
-import javafx.scene.media.MediaPlayer;
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import javafx.util.Duration;
 
+
+import dev.reproductor.nico.Audio.AudioAnalyzer;
+import dev.reproductor.nico.Manager.PlayListManager;
+import dev.reproductor.nico.Manager.PlayerManager;
+import dev.reproductor.nico.UIS.UIComponents;
+import dev.reproductor.nico.Visual.ShaderManager;
+
+import javax.sound.sampled.Clip;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
-import java.io.IOException;
-import java.nio.file.*;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 
 
-public class Main extends Application {
+public class Main extends JFrame {
+    private JList<String> lista_can;
+    private DefaultListModel<String> modeloLista;
+    private JButton agregar, eliminar, anterior, siguiente, play, detener, guardarPlaylist, cargarPlaylist, loopButton;
+    private JSlider volumen, tiempoSlider, barraVisual;
+    private JTextField nombre_can;
+    private JLabel tiempoLabel;
+    private JComboBox<String> tipo_reproduccion;
 
-    private final List<Track> tracks = new ArrayList<>();
-    private final ListView<String> listView = new ListView<>();
-    private MediaPlayer mediaPlayer;
-    private Label lblNow = new Label("Nada reproduciendo");
-    private Slider slider = new Slider();
-    private Label timeLabel = new Label("00:00 / 00:00");
-    private ToggleButton loopBtn = new ToggleButton("Loop");
-    private Button playBtn = new Button("Play");
-    private Button pauseBtn = new Button("Pause");
-    private Button stopBtn = new Button("Stop");
+    private final PlayListManager playlistManager;
+    private final PlayerManager player;
 
-    // Carpeta donde almacenamos las copias
-    private final Path musicFolder = Paths.get("music");
+    private boolean loop = false;
+    private boolean sliderMoving = false;
+    private boolean mostrarLista = true;
+    private boolean modoOscuro = true;
+    private boolean shadersActivos = false;
+
+    private JPanel panel, centro, botonesLista, volPanel, tiempoPanel, controles;
+    private JMenuItem shadersItem, mostrarTituloItem, temaItem;
+
+    private VisualizerPanel visualizerManager;
+    private ShaderManager shaderPanel;
+
+    public Main() {
+        setTitle("Reproductor de Música - Nico");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(900, 550);
+        setLocationRelativeTo(null);
+        setResizable(false);
+
+        playlistManager = new PlayListManager();
+        player = new PlayerManager(this);
+
+        java.net.URL iconURL = getClass().getResource("/iconos/music.png");
+        if (iconURL != null) setIconImage(new ImageIcon(iconURL).getImage());
+
+        panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        setContentPane(panel);
+
+        JMenuBar menuBar = new JMenuBar();
+        JMenu menuOpciones = new JMenu("Opciones");
+
+        shadersItem = new JMenuItem("Activar Shaders");
+        mostrarTituloItem = new JMenuItem("Mostrar solo el título (Desactivado)");
+        temaItem = new JMenuItem("Cambiar a modo claro");
+
+        shadersItem.addActionListener(e -> alternarShaders());
+        mostrarTituloItem.addActionListener(e -> alternarVistaTitulo());
+        temaItem.addActionListener(e -> alternarTema());
+
+        menuOpciones.add(shadersItem);
+        menuOpciones.add(mostrarTituloItem);
+        menuOpciones.add(temaItem);
+        menuBar.add(menuOpciones);
+        setJMenuBar(menuBar);
+
+        modeloLista = new DefaultListModel<>();
+        lista_can = new JList<>(modeloLista);
+        lista_can.setSelectionBackground(Color.decode("#3a85ff"));
+        JScrollPane scrollLista = new JScrollPane(lista_can);
+        scrollLista.setPreferredSize(new Dimension(200, 0));
+        panel.add(scrollLista, BorderLayout.WEST);
+
+        botonesLista = new JPanel(new GridLayout(5, 1, 5, 5));
+        agregar = UIComponents.boton("Agregar");
+        eliminar = UIComponents.boton("Quitar");
+        loopButton = UIComponents.boton("Loop: OFF");
+        guardarPlaylist = UIComponents.boton("Guardar Playlist");
+        cargarPlaylist = UIComponents.boton("Cargar Playlist");
+        botonesLista.add(agregar);
+        botonesLista.add(eliminar);
+        botonesLista.add(loopButton);
+        botonesLista.add(guardarPlaylist);
+        botonesLista.add(cargarPlaylist);
+        panel.add(botonesLista, BorderLayout.SOUTH);
+
+        centro = new JPanel(new BorderLayout(10, 10));
+
+        JPanel infoPanel = new JPanel(new BorderLayout(5, 5));
+        nombre_can = new JTextField("Reproductor de Nico");
+        nombre_can.setEditable(false);
+        nombre_can.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        nombre_can.setHorizontalAlignment(JTextField.CENTER);
+        nombre_can.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+
+        tipo_reproduccion = new JComboBox<>(new String[]{"Normal", "Inversa", "Aleatoria"});
+        infoPanel.add(nombre_can, BorderLayout.CENTER);
+        infoPanel.add(tipo_reproduccion, BorderLayout.EAST);
+        centro.add(infoPanel, BorderLayout.NORTH);
+
+        tiempoPanel = new JPanel(new BorderLayout(5, 5));
+        tiempoSlider = UIComponents.slider(0, 1000, 0);
+        tiempoLabel = new JLabel("00:00 / 00:00", SwingConstants.CENTER);
+        tiempoPanel.add(tiempoSlider, BorderLayout.CENTER);
+        tiempoPanel.add(tiempoLabel, BorderLayout.SOUTH);
+        centro.add(tiempoPanel, BorderLayout.CENTER);
+
+        barraVisual = UIComponents.slider(0, 100, 0);
+        barraVisual.setEnabled(false);
+        tiempoPanel.add(barraVisual, BorderLayout.NORTH);
+
+        controles = new JPanel();
+        anterior = UIComponents.botonIcon("/iconos/anterior.png");
+        play = UIComponents.botonIcon("/iconos/play.png");
+        detener = UIComponents.botonIcon("/iconos/pausa.png");
+        siguiente = UIComponents.botonIcon("/iconos/siguiente.png");
+        controles.add(anterior);
+        controles.add(play);
+        controles.add(detener);
+        controles.add(siguiente);
+        centro.add(controles, BorderLayout.SOUTH);
+
+        volPanel = new JPanel(new BorderLayout());
+        JLabel volLabel = new JLabel("Volumen", SwingConstants.CENTER);
+        volumen = UIComponents.slider(0, 100, 100);
+        volPanel.add(volLabel, BorderLayout.NORTH);
+        volPanel.add(volumen, BorderLayout.CENTER);
+        panel.add(volPanel, BorderLayout.EAST);
+
+        panel.add(centro, BorderLayout.CENTER);
+
+        shaderPanel = new ShaderManager();
+        visualizerManager = new VisualizerPanel(shaderPanel, player);
+
+        agregar.addActionListener(e -> playlistManager.agregarCancion(modeloLista));
+        eliminar.addActionListener(e -> playlistManager.eliminarCancion(lista_can, modeloLista, player));
+        guardarPlaylist.addActionListener(e -> playlistManager.guardarPlaylist());
+        cargarPlaylist.addActionListener(e -> playlistManager.cargarPlaylist(modeloLista));
+
+        play.addActionListener(e -> player.playPauseCancion());
+        detener.addActionListener(e -> player.detenerCancion());
+        siguiente.addActionListener(e -> {
+            player.siguienteCancion();
+            if (shadersActivos) visualizerManager.restart();
+        });
+        anterior.addActionListener(e -> {
+            player.anteriorCancion();
+            if (shadersActivos) visualizerManager.restart();
+        });
+
+        loopButton.addActionListener(e -> {
+            loop = !loop;
+            player.setLoop(loop);
+            loopButton.setText(loop ? "Loop: ON" : "Loop: OFF");
+        });
+
+        tipo_reproduccion.addActionListener(e -> {
+            player.setModoReproduccion((String) tipo_reproduccion.getSelectedItem());
+            player.resetRandomListIfNeeded();
+            if (shadersActivos) visualizerManager.restart();
+        });
+
+        lista_can.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    player.reproducirIndice(lista_can.getSelectedIndex());
+                    player.resetRandomListIfNeeded();
+                    if (shadersActivos) visualizerManager.restart();
+                }
+            }
+        });
+
+        tiempoSlider.addMouseListener(new MouseAdapter() {
+            public void mousePressed(MouseEvent e) {
+                sliderMoving = true;
+            }
+
+            public void mouseReleased(MouseEvent e) {
+                player.moverSliderTiempo(tiempoSlider, sliderMoving);
+                sliderMoving = false;
+            }
+        });
+
+        volumen.addChangeListener(e -> player.setVolumen(volumen.getValue()));
+        new Timer(500, e -> player.actualizarTiempo(tiempoSlider, tiempoLabel)).start();
+
+        aplicarTema();
+    }
+
+    public void resetRandomListIfNeeded() {
+        if (playlistManager != null) {
+            playlistManager.resetRandomList();
+        }
+    }
+
+    public File getCurrentSongFile() {
+        if (playlistManager == null || playlistManager.getCanciones().isEmpty()) return null;
+        int idx = playlistManager.getIndiceActual();
+        if (idx < 0 || idx >= playlistManager.getCanciones().size()) return null;
+        return playlistManager.getCanciones().get(idx);
+    }
+
+    public JSlider getBarraVisual() {
+        return barraVisual;
+    }
+
+    private void alternarShaders() {
+        shadersActivos = !shadersActivos;
+        shadersItem.setText(shadersActivos ? "Desactivar Shaders" : "Activar Shaders");
+
+        if (shadersActivos) {
+            centro.add(shaderPanel, BorderLayout.CENTER);
+            centro.revalidate();
+            centro.repaint();
+            visualizerManager.start();
+        } else {
+            visualizerManager.stop();
+            centro.remove(shaderPanel);
+            centro.revalidate();
+            centro.repaint();
+        }
+
+        JOptionPane.showMessageDialog(this, shadersActivos ?
+                "✨ Shaders activados (efectos visuales dinámicos)." :
+                "❌ Shaders desactivados.");
+    }
+
+    private void alternarVistaTitulo() {
+        mostrarLista = !mostrarLista;
+        boolean soloTitulo = !mostrarLista;
+
+        lista_can.setVisible(!soloTitulo);
+        botonesLista.setVisible(!soloTitulo);
+        volPanel.setVisible(!soloTitulo);
+        controles.setVisible(!soloTitulo);
+        tiempoPanel.setVisible(!soloTitulo);
+        tipo_reproduccion.setVisible(!soloTitulo);
+
+        mostrarTituloItem.setText(soloTitulo ?
+                "Mostrar solo el título (Activado)" :
+                "Mostrar solo el título (Desactivado)");
+    }
+
+    private void alternarTema() {
+        modoOscuro = !modoOscuro;
+        aplicarTema();
+        temaItem.setText(modoOscuro ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+    }
+
+    private void aplicarTema() {
+        Color fondo = modoOscuro ? Color.decode("#1e1e1e") : Color.decode("#f4f4f4");
+        Color texto = modoOscuro ? Color.WHITE : Color.BLACK;
+        Color fondoLista = modoOscuro ? Color.decode("#2e2e2e") : Color.WHITE;
+
+        getContentPane().setBackground(fondo);
+        panel.setBackground(fondo);
+        centro.setBackground(fondo);
+        botonesLista.setBackground(fondo);
+        volPanel.setBackground(fondo);
+        tiempoPanel.setBackground(fondo);
+        controles.setBackground(fondo);
+
+        lista_can.setBackground(fondoLista);
+        lista_can.setForeground(texto);
+        nombre_can.setBackground(fondoLista);
+        nombre_can.setForeground(texto);
+        tiempoLabel.setForeground(texto);
+    }
+
+    public JTextField getNombreCan() {
+        return nombre_can;
+    }
+
+    public PlayListManager getPlaylistManager() {
+        return playlistManager;
+    }
 
     public static void main(String[] args) {
-        launch(args);
+        SwingUtilities.invokeLater(() -> new Main().setVisible(true));
     }
 
-    @Override
-    public void start(Stage primaryStage) {
-        try {
-            if (!Files.exists(musicFolder)) {
-                Files.createDirectories(musicFolder);
-            }
-        } catch (IOException e) {
-            showError("No se pudo crear la carpeta de música: " + e.getMessage());
+    private static class VisualizerPanel {
+        private final ShaderManager shaderPanel;
+        private final PlayerManager player;
+        private AudioAnalyzer analyzer;
+        private volatile boolean running = false;
+        private Thread loopThread;
+
+        public VisualizerPanel(ShaderManager panel, PlayerManager player) {
+            this.shaderPanel = panel;
+            this.player = player;
         }
 
-        BorderPane root = new BorderPane();
-        root.setPadding(new Insets(10));
+        public void start() {
+            File songFile = player.getCurrentSongFile();
+            if (songFile == null || !songFile.exists()) return;
 
-        Label title = new Label("Reproductor simple - Java 21 + JavaFX");
-        title.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
-        HBox topBox = new HBox(title);
-        topBox.setAlignment(Pos.CENTER);
-        root.setTop(topBox);
+            stop();
+            analyzer = new AudioAnalyzer(songFile);
+            analyzer.start();
+            running = true;
+            loopThread = new Thread(this::loop, "Visualizer-Loop");
+            loopThread.start();
+        }
 
-        // Center: lista y controls
-        VBox center = new VBox(8);
-        center.setPadding(new Insets(8));
-
-        listView.setPrefHeight(240);
-        refreshListView();
-
-        HBox listControls = new HBox(8);
-        Button addBtn = new Button("Añadir");
-        Button removeBtn = new Button("Borrar copia");
-        Button renameBtn = new Button("Renombrar copia");
-        Button loadBtn = new Button("Cargar (reproducir)");
-        listControls.getChildren().addAll(addBtn, loadBtn, renameBtn, removeBtn);
-
-        center.getChildren().addAll(listView, listControls);
-
-        root.setCenter(center);
-
-        // Bottom: reproducción
-        HBox controls = new HBox(10);
-        controls.setAlignment(Pos.CENTER_LEFT);
-
-        playBtn.setOnAction(e -> playSelected());
-        pauseBtn.setOnAction(e -> {
-            if (mediaPlayer != null) mediaPlayer.pause();
-        });
-        stopBtn.setOnAction(e -> {
-            if (mediaPlayer != null) {
-                mediaPlayer.stop();
-            }
-        });
-
-        Button prevBtn = new Button("<<");
-        Button nextBtn = new Button(">>");
-        prevBtn.setOnAction(e -> playAdjacent(-1));
-        nextBtn.setOnAction(e -> playAdjacent(1));
-
-        // slider
-        slider.setMin(0);
-        slider.setMax(100);
-        slider.setValue(0);
-        slider.setPrefWidth(300);
-        slider.valueProperty().addListener((obs, oldV, newV) -> {
-            if (slider.isValueChanging() && mediaPlayer != null) {
-                Duration total = mediaPlayer.getTotalDuration();
-                if (total != null && !total.isUnknown()) {
-                    mediaPlayer.seek(total.multiply(newV.doubleValue() / 100.0));
-                }
-            }
-        });
-
-        loopBtn.setOnAction(e -> {
-            if (mediaPlayer != null) {
-                mediaPlayer.setCycleCount(loopBtn.isSelected() ? MediaPlayer.INDEFINITE : 1);
-            }
-        });
-
-        controls.getChildren().addAll(prevBtn, playBtn, pauseBtn, stopBtn, nextBtn, new Label(" | "), loopBtn, new Label(" | "), lblNow);
-
-        HBox bottom = new HBox(8);
-        bottom.setAlignment(Pos.CENTER);
-        VBox vcontrols = new VBox(6, controls, new HBox(slider, timeLabel));
-        vcontrols.setAlignment(Pos.CENTER);
-        bottom.getChildren().add(vcontrols);
-
-        root.setBottom(bottom);
-
-        // acciones de lista
-        addBtn.setOnAction(e -> addFiles(primaryStage));
-        removeBtn.setOnAction(e -> deleteSelectedCopy());
-        renameBtn.setOnAction(e -> renameSelected());
-        loadBtn.setOnAction(e -> playSelected());
-
-        listView.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2) {
-                playSelected();
-            }
-        });
-
-        // teclas
-        root.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.SPACE) {
-                if (mediaPlayer != null && mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING) mediaPlayer.pause();
-                else playSelected();
-            }
-        });
-
-        Scene scene = new Scene(root, 800, 420);
-        primaryStage.setScene(scene);
-        primaryStage.setTitle("Reproductor - Java 21");
-        primaryStage.show();
-    }
-
-    private void addFiles(Stage stage) {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Selecciona archivos de audio");
-        chooser.getExtensionFilters().addAll(
-                new FileChooser.ExtensionFilter("Audio", "*.mp3", "*.ogg"),
-                new FileChooser.ExtensionFilter("MP3", "*.mp3"),
-                new FileChooser.ExtensionFilter("OGG", "*.ogg")
-        );
-        List<File> chosen = chooser.showOpenMultipleDialog(stage);
-        if (chosen == null || chosen.isEmpty()) return;
-
-        for (File f : chosen) {
+        private void loop() {
             try {
-                String name = generateUniqueName(f.getName());
-                Path target = musicFolder.resolve(name);
-                Files.copy(f.toPath(), target, StandardCopyOption.REPLACE_EXISTING);
-                Track t = new Track(name, target.toUri().toString());
-                tracks.add(t);
-            } catch (IOException ex) {
-                showError("Error copiando: " + ex.getMessage());
-            }
-        }
-        refreshListView();
-    }
+                while (running && analyzer != null && analyzer.getClip() != null && analyzer.getClip().isRunning()) {
+                    float energy = analyzer.getCurrentEnergy();
 
-    private String generateUniqueName(String original) {
-        try {
-            String base = original;
-            String nameOnly = base;
-            String ext = "";
-            int dot = base.lastIndexOf('.');
-            if (dot > 0) {
-                nameOnly = base.substring(0, dot);
-                ext = base.substring(dot);
-            }
-            String candidate = nameOnly + ext;
-            int i = 1;
-            while (Files.exists(musicFolder.resolve(candidate))) {
-                candidate = nameOnly + "-" + i + ext;
-                i++;
-            }
-            return candidate;
-        } catch (Exception e) {
-            // fallback
-            String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(System.currentTimeMillis());
-            return timestamp + "-" + original;
-        }
-    }
+                    if (energy < 3000) shaderPanel.setEffect(ShaderManager.EffectType.NONE);
+                    else if (energy < 10000) shaderPanel.setEffect(ShaderManager.EffectType.FOG);
+                    else if (energy < 25000) shaderPanel.setEffect(ShaderManager.EffectType.PULSE);
+                    else if (energy < 60000) shaderPanel.setEffect(ShaderManager.EffectType.VIBRATION);
+                    else shaderPanel.setEffect(ShaderManager.EffectType.FLASH);
 
-    private void refreshListView() {
-        listView.getItems().clear();
-        // carga tracks desde carpeta 'music' (solo si tracks list vacío, se pueden guardar persistencia luego)
-        if (tracks.isEmpty()) {
-            try {
-                if (Files.exists(musicFolder)) {
-                    DirectoryStream<Path> ds = Files.newDirectoryStream(musicFolder, "*.{mp3,ogg}");
-                    for (Path p : ds) {
-                        tracks.add(new Track(p.getFileName().toString(), p.toUri().toString()));
-                    }
+                    Thread.sleep(60);
                 }
-            } catch (IOException e) {
-                // ignore
+            } catch (InterruptedException ignored) {
+            } finally {
+                running = false;
             }
         }
-        for (Track t : tracks) listView.getItems().add(t.getDisplayName());
-    }
 
-    private Track getSelectedTrack() {
-        int idx = listView.getSelectionModel().getSelectedIndex();
-        if (idx < 0 || idx >= tracks.size()) return null;
-        return tracks.get(idx);
-    }
-
-    private void playSelected() {
-        Track t = getSelectedTrack();
-        if (t == null) {
-            // si no hay seleccion, intenta primer elemento
-            if (!tracks.isEmpty()) {
-                listView.getSelectionModel().select(0);
-                t = tracks.get(0);
-            } else {
-                showInfo("No hay canciones en la lista. Añade archivos.");
-                return;
+        public void stop() {
+            running = false;
+            if (analyzer != null) {
+                try {
+                    Clip c = analyzer.getClip();
+                    if (c != null && c.isRunning())
+                        c.stop();
+                } catch (Exception ignored) {}
             }
-        }
-        playTrack(t);
-    }
-
-    private void playTrack(Track t) {
-        stopPlayerIfAny();
-        try {
-            Media media = new Media(t.getUri());
-            mediaPlayer = new MediaPlayer(media);
-            lblNow.setText("Reproduciendo: " + t.getDisplayName());
-
-            // ciclo y control de loop
-            mediaPlayer.setCycleCount(loopBtn.isSelected() ? MediaPlayer.INDEFINITE : 1);
-
-            mediaPlayer.setOnReady(() -> {
-                Duration total = mediaPlayer.getTotalDuration();
-                updateTimeLabel(Duration.ZERO, total);
-                // actualizar slider max
-                slider.setValue(0);
-                // escucha progreso
-                mediaPlayer.currentTimeProperty().addListener((ov, oldTime, newTime) -> {
-                    updateTimeLabel(newTime, total);
-                    if (!slider.isValueChanging() && total != null && !total.isUnknown()) {
-                        double progress = newTime.toMillis() / total.toMillis() * 100.0;
-                        slider.setValue(progress);
-                    }
-                });
-                mediaPlayer.play();
-            });
-
-            mediaPlayer.setOnEndOfMedia(() -> {
-                if (mediaPlayer.getCycleCount() != MediaPlayer.INDEFINITE) {
-                    // si no loop, avanza al siguiente
-                    playAdjacent(1);
-                }
-            });
-
-            mediaPlayer.setOnError(() -> showError("Error mediaPlayer: " + mediaPlayer.getError().getMessage()));
-
-        } catch (Exception e) {
-            showError("No se pudo reproducir: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    private void stopPlayerIfAny() {
-        if (mediaPlayer != null) {
-            mediaPlayer.stop();
-            mediaPlayer.dispose();
-            mediaPlayer = null;
-        }
-    }
-
-    private void playAdjacent(int delta) {
-        int idx = listView.getSelectionModel().getSelectedIndex();
-        if (idx < 0 && !tracks.isEmpty()) idx = 0;
-        int next = idx + delta;
-        if (next < 0) next = tracks.size() - 1;
-        if (next >= tracks.size()) next = 0;
-        listView.getSelectionModel().select(next);
-        playSelected();
-    }
-
-    private void deleteSelectedCopy() {
-        Track t = getSelectedTrack();
-        if (t == null) {
-            showInfo("Selecciona una copia para borrar.");
-            return;
-        }
-        // confirm
-        Alert a = new Alert(Alert.AlertType.CONFIRMATION, "Borrar copia: " + t.getDisplayName() + " ?", ButtonType.YES, ButtonType.NO);
-        Optional<ButtonType> res = a.showAndWait();
-        if (res.isPresent() && res.get() == ButtonType.YES) {
-            try {
-                Path p = Paths.get(Paths.get(new java.net.URI(t.getUri())).getPath());
-                stopIfPlayingUri(t.getUri());
-                Files.deleteIfExists(p);
-                tracks.remove(t);
-                refreshListView();
-            } catch (Exception e) {
-                showError("No se pudo borrar: " + e.getMessage());
-            }
-        }
-    }
-
-    private void stopIfPlayingUri(String uri) {
-        if (mediaPlayer != null) {
-            Media m = mediaPlayer.getMedia();
-            if (m != null && m.getSource().equals(uri)) {
-                mediaPlayer.stop();
-                mediaPlayer.dispose();
-                mediaPlayer = null;
-            }
-        }
-    }
-
-    private void renameSelected() {
-        Track t = getSelectedTrack();
-        if (t == null) {
-            showInfo("Selecciona una copia para renombrar.");
-            return;
-        }
-        TextInputDialog dlg = new TextInputDialog(t.getDisplayName());
-        dlg.setTitle("Renombrar copia");
-        dlg.setHeaderText("Nuevo nombre (con extensión, p.ej. mi-cancion.mp3):");
-        Optional<String> res = dlg.showAndWait();
-        if (res.isPresent()) {
-            String newName = res.get().trim();
-            if (newName.isEmpty()) {
-                showInfo("Nombre inválido.");
-                return;
-            }
-            try {
-                Path oldPath = Paths.get(new java.net.URI(t.getUri())).getPath();
-                Path newPath = oldPath.resolveSibling(newName);
-                if (Files.exists(newPath)) {
-                    showInfo("Ya existe un archivo con ese nombre en la carpeta music.");
-                    return;
-                }
-                Files.move(oldPath, newPath);
-                // actualizar track
-                t.setDisplayName(newName);
-                t.setUri(newPath.toUri().toString());
-                refreshListView();
-            } catch (Exception e) {
-                showError("Error renombrando: " + e.getMessage());
-            }
-        }
-    }
-
-    private void updateTimeLabel(Duration current, Duration total) {
-        String cur = formatDuration(current);
-        String tot = (total == null || total.isUnknown()) ? "--:--" : formatDuration(total);
-        Platform.runLater(() -> timeLabel.setText(cur + " / " + tot));
-    }
-
-    private String formatDuration(Duration d) {
-        if (d == null || d.isUnknown()) return "--:--";
-        int seconds = (int) Math.floor(d.toSeconds());
-        int mins = seconds / 60;
-        int secs = seconds % 60;
-        return String.format("%02d:%02d", mins, secs);
-    }
-
-    private void showError(String msg) {
-        Platform.runLater(() -> {
-            Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
-            a.showAndWait();
-        });
-    }
-
-    private void showInfo(String msg) {
-        Platform.runLater(() -> {
-            Alert a = new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK);
-            a.showAndWait();
-        });
-    }
-
-    // Clase interna para representar una pista
-    private static class Track {
-        private String displayName;
-        private String uri;
-
-        public Track(String displayName, String uri) {
-            this.displayName = displayName;
-            this.uri = uri;
+            if (loopThread != null) loopThread.interrupt();
         }
 
-        public String getDisplayName() {
-            return displayName;
-        }
-
-        public String getUri() {
-            return uri;
-        }
-
-        public void setDisplayName(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public void setUri(String uri) {
-            this.uri = uri;
+        public void restart() {
+            stop();
+            start();
         }
     }
 }
