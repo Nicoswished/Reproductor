@@ -5,7 +5,6 @@ package dev.reproductor.nico;
 import dev.reproductor.nico.Manager.PlayListManager;
 import dev.reproductor.nico.Manager.PlayerManager;
 import dev.reproductor.nico.UIS.UIComponents;
-import dev.reproductor.nico.Visual.OpenGLVisualizer;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -17,6 +16,7 @@ import java.io.File;
 
 public class Main extends JFrame {
 
+
     private JList<String> lista_can;
     private DefaultListModel<String> modeloLista;
     private JButton agregar, eliminar, anterior, siguiente, play, detener, guardarPlaylist, cargarPlaylist, loopButton;
@@ -26,19 +26,17 @@ public class Main extends JFrame {
     private JComboBox<String> tipo_reproduccion;
 
     private final PlayListManager playlistManager;
-    private final PlayerManager player;
+    public final PlayerManager player;
 
     private boolean loop = false;
     private boolean sliderMoving = false;
     private boolean mostrarLista = true;
     private boolean modoOscuro = true;
-    private boolean shadersActivos = false;
-    public boolean fullscreenShader = false;
 
     private JPanel panel, centro, botonesLista, volPanel, tiempoPanel, controles;
-    private JMenuItem shadersItem, mostrarTituloItem, temaItem, fullscreenItem;
+    private JMenuItem mostrarTituloItem, temaItem, volumenPctToggleItem;
 
-    private OpenGLVisualizer shaderVisualizer;
+    private JLabel volumenPctLabel;
 
     public Main() {
         setTitle("Reproductor de Música - Nico");
@@ -48,12 +46,12 @@ public class Main extends JFrame {
         setResizable(false);
 
         playlistManager = new PlayListManager();
-        player = new PlayerManager(this);
 
         java.net.URL iconURL = getClass().getResource("/iconos/music.png");
         if (iconURL != null) setIconImage(new ImageIcon(iconURL).getImage());
 
         initUI();
+        player = new PlayerManager(this);
     }
 
     private void initUI() {
@@ -64,18 +62,15 @@ public class Main extends JFrame {
         JMenuBar menuBar = new JMenuBar();
         JMenu menuOpciones = new JMenu("Opciones");
 
-        shadersItem = new JMenuItem("Activar Shaders");
         mostrarTituloItem = new JMenuItem("Mostrar solo el título (Desactivado)");
         temaItem = new JMenuItem("Cambiar a modo claro");
-        fullscreenItem = new JMenuItem("Shaders ventana completa");
+        volumenPctToggleItem = new JMenuItem("Ocultar % de volumen");
 
-        shadersItem.addActionListener(e -> toggleShaders());
         mostrarTituloItem.addActionListener(e -> toggleTitulo());
         temaItem.addActionListener(e -> toggleTema());
-        fullscreenItem.addActionListener(e -> toggleFullscreenShader());
+        volumenPctToggleItem.addActionListener(e -> toggleVolumenPctVisibility());
 
-        menuOpciones.add(shadersItem);
-        menuOpciones.add(fullscreenItem);
+        menuOpciones.add(volumenPctToggleItem);
         menuOpciones.add(mostrarTituloItem);
         menuOpciones.add(temaItem);
         menuBar.add(menuOpciones);
@@ -141,14 +136,20 @@ public class Main extends JFrame {
         volPanel = new JPanel(new BorderLayout());
         JLabel volLabel = new JLabel("Volumen", SwingConstants.CENTER);
         volumen = UIComponents.slider(0,100,100);
+        // Mostrar porcentaje al lado del slider
+        volumenPctLabel = new JLabel(volumen.getValue() + "%", SwingConstants.CENTER);
+
+        JPanel volCenter = new JPanel(new BorderLayout(5,5));
+        volCenter.add(volumen, BorderLayout.CENTER);
+        volCenter.add(volumenPctLabel, BorderLayout.EAST);
+
         volPanel.add(volLabel, BorderLayout.NORTH);
-        volPanel.add(volumen, BorderLayout.CENTER);
+        volPanel.add(volCenter, BorderLayout.CENTER);
         panel.add(volPanel, BorderLayout.EAST);
 
         panel.add(centro, BorderLayout.CENTER);
 
-        shaderVisualizer = null;
-
+        // Listeners y acciones
         agregar.addActionListener(e -> playlistManager.agregarCancion(modeloLista));
         eliminar.addActionListener(e -> playlistManager.eliminarCancion(lista_can, modeloLista, player));
         guardarPlaylist.addActionListener(e -> playlistManager.guardarPlaylist());
@@ -187,10 +188,21 @@ public class Main extends JFrame {
             }
         });
 
-        volumen.addChangeListener(e -> player.setVolumen(volumen.getValue()));
+        volumen.addChangeListener(e -> {
+            int v = volumen.getValue();
+            volumenPctLabel.setText(v + "%");
+            player.setVolumen(v); // persistencia y aplicación en PlayerManager
+        });
+
+        // Timer para actualizar tiempo de reproducción
         new Timer(500, e -> player.actualizarTiempo(tiempoSlider, tiempoLabel)).start();
 
         aplicarTema();
+
+        // Inicializar slider con valor desde prefs (PlayerManager lo colocó en constructor)
+        // pero por si acaso sincronizamos:
+        int initialVol = volumen.getValue();
+        volumenPctLabel.setText(initialVol + "%");
     }
 
     public void resetRandomListIfNeeded() {
@@ -208,28 +220,9 @@ public class Main extends JFrame {
     public PlayListManager getPlaylistManager() { return playlistManager; }
     public JSlider getBarraVisual() { return barraVisual; }
 
-    private void toggleShaders() {
-        shadersActivos = !shadersActivos;
-        shadersItem.setText(shadersActivos ? "Desactivar Shaders" : "Activar Shaders");
-
-        if(shadersActivos){
-            if(shaderVisualizer == null)
-                shaderVisualizer = new OpenGLVisualizer(player.analyzer, this, fullscreenShader);
-            shaderVisualizer.start();
-        } else if(shaderVisualizer != null){
-            shaderVisualizer.stop();
-        }
-
-        JOptionPane.showMessageDialog(this, shadersActivos ?
-                "✨ Shaders activados (efectos visuales dinámicos)." :
-                "❌ Shaders desactivados.");
-    }
-
-    private void toggleFullscreenShader() {
-        fullscreenShader = !fullscreenShader;
-        if(fullscreenShader) fullscreenItem.setText("Shaders ventana completa (Activado)");
-        else fullscreenItem.setText("Shaders ventana completa (Desactivado)");
-    }
+    // Exponer slider y etiqueta para PlayerManager
+    public JSlider getVolumenSlider() { return volumen; }
+    public JLabel getVolumenPctLabel() { return volumenPctLabel; }
 
     private void toggleTitulo() {
         mostrarLista = !mostrarLista;
@@ -251,6 +244,12 @@ public class Main extends JFrame {
         modoOscuro = !modoOscuro;
         aplicarTema();
         temaItem.setText(modoOscuro ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+    }
+
+    private void toggleVolumenPctVisibility() {
+        boolean visible = !volumenPctLabel.isVisible();
+        volumenPctLabel.setVisible(visible);
+        volumenPctToggleItem.setText(visible ? "Ocultar % de volumen" : "Mostrar % de volumen");
     }
 
     private void aplicarTema() {

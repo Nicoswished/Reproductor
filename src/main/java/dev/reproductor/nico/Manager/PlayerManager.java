@@ -3,11 +3,11 @@ package dev.reproductor.nico.Manager;
 
 import dev.reproductor.nico.Audio.AudioAnalyzer;
 import dev.reproductor.nico.Main;
-import dev.reproductor.nico.Visual.OpenGLVisualizer;
 
 import javax.sound.sampled.*;
 import javax.swing.*;
 import java.io.File;
+import java.util.prefs.Preferences;
 
 public class PlayerManager {
 
@@ -20,12 +20,18 @@ public class PlayerManager {
     private String modo = "Normal";
 
     public AudioAnalyzer analyzer;
-    private OpenGLVisualizer visualizerThread;
 
     private final Main main;
 
+    // Preferencias (persistencia simple)
+    private final Preferences prefs = Preferences.userRoot().node("nico.player");
+    private static final String PREF_VOLUME = "volume_pct";
+
     public PlayerManager(Main main) {
         this.main = main;
+        int v = prefs.getInt(PREF_VOLUME, 100);
+        main.getVolumenSlider().setValue(v);
+        main.getVolumenPctLabel().setText(v + "%");
     }
 
     public void setModoReproduccion(String m) {
@@ -70,7 +76,9 @@ public class PlayerManager {
             clip.open(dais);
 
             duracionActual = clip.getMicrosecondLength();
-            setVolumen(80);
+
+            int v = main.getVolumenSlider().getValue();
+            setVolumen(v);
 
             clip.start();
             reproduciendo = true;
@@ -79,12 +87,6 @@ public class PlayerManager {
 
             analyzer = new AudioAnalyzer(song);
             analyzer.start();
-
-            if (visualizerThread != null) {
-                visualizerThread.stop();
-            }
-            visualizerThread = new OpenGLVisualizer(analyzer, main, main.fullscreenShader);
-            visualizerThread.start();
 
             clip.addLineListener(e -> {
                 if (e.getType() == LineEvent.Type.STOP && reproduciendo) {
@@ -119,10 +121,7 @@ public class PlayerManager {
                 reproduciendo = false;
                 clip.stop();
                 clip.close();
-            }
-            if (visualizerThread != null) {
-                visualizerThread.stop();
-                visualizerThread = null;
+                clip = null;
             }
         } catch (Exception ignored) {}
     }
@@ -152,13 +151,35 @@ public class PlayerManager {
         }
     }
 
+
     public void setVolumen(int v) {
         try {
+            prefs.putInt(PREF_VOLUME, v);
+            main.getVolumenPctLabel().setText(v + "%");
+
             if (clip != null) {
-                controlVolumen = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-                float range = controlVolumen.getMaximum() - controlVolumen.getMinimum();
-                float gain = (range * v / 100f) + controlVolumen.getMinimum();
+                try {
+                    controlVolumen = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                } catch (IllegalArgumentException ex) {
+                    return;
+                }
+
+                float min = controlVolumen.getMinimum();
+                float max = controlVolumen.getMaximum();
+
+                if (v <= 0) {
+                    controlVolumen.setValue(min);
+                    return;
+                }
+
+                double amp = v / 100.0;
+                double db = 20.0 * Math.log10(amp);
+
+                float gain = (float) Math.max(min, Math.min(max, db));
+
                 controlVolumen.setValue(gain);
+            } else {
+
             }
         } catch (Exception ignored) {}
     }
@@ -172,10 +193,5 @@ public class PlayerManager {
     }
 
     public void restartVisualizer() {
-        if (visualizerThread != null) {
-            visualizerThread.stop();
-            visualizerThread = new OpenGLVisualizer(analyzer, main, main.fullscreenShader);
-            visualizerThread.start();
-        }
     }
 }
